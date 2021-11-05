@@ -36,7 +36,7 @@ python inference.py --mode cut                            \
 ## Requirements
 You will need the following to run the above:
 - TensorFlow >= 2.0
-- Python 3, Numpy 1.19.5, Matplotlib 3.4.3, wandb 0.12.6
+- Python 3, Numpy 1.19.5, Matplotlib 3.4.3
 - If you want to use custom TensorFlow ops:
   - Please refer to the Requirements section of [stylegan2 project](https://github.com/NVlabs/stylegan2).
 
