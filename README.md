@@ -7,12 +7,6 @@ DCLGAN is a simple yet powerful model for unsupervised Image-to-image translatio
   <img src = 'images/dclgan.png' height = '360px'>
 </div>
 
-
-## Translated examples of summer2winter
-
-Not ready
-
-
 ## Training
 Use `train.py` to train a DCLGAN/SimDCL(Not currently implemented) model on given dataset.
 Training takes 502ms(Tensorflow ops) for a single step on RTX 3070 (but ran out of memory).
