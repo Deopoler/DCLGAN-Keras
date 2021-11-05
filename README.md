@@ -29,7 +29,8 @@ Example usage:
 ```
 python inference.py --mode dclgan                         \
                     --weights ./output/checkpoints        \
-                    --input ./datasets/horse2zebra/testA  \
+                    --inputA ./datasets/horse2zebra/testA \
+                    --inputB ./datasets/horse2zebra/testB \
 ```
 
 
