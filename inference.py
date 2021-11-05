@@ -28,7 +28,6 @@ def ArgParse():
                         type=str, default='./translated/A')
     parser.add_argument('--outputB', help='Output-B folder',
                         type=str, default='./translated/B')
-    parser.add_argument('--direction', help='')
 
     args = parser.parse_args()
 
