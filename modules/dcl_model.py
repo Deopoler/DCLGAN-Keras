@@ -192,7 +192,6 @@ class DCL_model(Model):
         assert norm_layer in [None, 'batch', 'instance']
         assert netF_units > 0
         assert netF_num_patches > 0
-        assert impl in ['ref', 'cuda']
         super(DCL_model, self).__init__(self, **kwargs)
 
         self.gan_mode = gan_mode
