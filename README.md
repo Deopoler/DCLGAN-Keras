@@ -37,10 +37,7 @@ python inference.py --mode cut                            \
 You will need the following to run the above:
 - TensorFlow >= 2.0
 - Python 3, Numpy 1.19.5, Matplotlib 3.4.3
-- If you want to use custom TensorFlow ops:
-  - Please refer to the Requirements section of [stylegan2 project](https://github.com/NVlabs/stylegan2).
 
 ## Acknowledgements
 - The code is developed based on [official-pytorch-implementation](https://github.com/JunlinHan/DCLGAN) and [CUT](https://github.com/cryu854/CUT).
 - The training datasets are from [taesung_park/CycleGAN/datasets](https://people.eecs.berkeley.edu/~taesung_park/CycleGAN/datasets/).
-- The cuda implementations are from [stylegan2 project](https://github.com/NVlabs/stylegan2).
