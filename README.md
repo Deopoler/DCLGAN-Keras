@@ -13,8 +13,8 @@ Training takes 502ms for a single step on RTX 3070.
 
 Example usage for training on horse2zebra-dataset:
 ```
-python train.py --mode dclgan                                   \
-                --save_n_epoch 10                             \
+python train.py --mode dclgan                               \
+                --save_n_epoch 10                           \
                 --train_a_dir ./datasets/horse2zebra/trainA \
                 --train_b_dir ./datasets/horse2zebra/trainB \
                 --test_a_dir ./datasets/horse2zebra/testA   \
@@ -27,7 +27,7 @@ Use `inference.py` to translate image from source domain to target domain.
 
 Example usage:
 ```
-python inference.py --mode cut                            \
+python inference.py --mode dclgan                         \
                     --weights ./output/checkpoints        \
                     --input ./datasets/horse2zebra/testA  \
 ```
