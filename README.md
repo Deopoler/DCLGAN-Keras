@@ -10,9 +10,7 @@ DCLGAN is a simple yet powerful model for unsupervised Image-to-image translatio
 
 ## Translated examples of summer2winter
 
-<div align = 'left'>
-  <img src='images/summer2winter_result.PNG' height = '380px'>
-</div>
+Not ready
 
 
 ## Training
@@ -39,14 +37,6 @@ python inference.py --mode cut                            \
                     --weights ./output/checkpoints        \
                     --input ./datasets/horse2zebra/testA  \
 ```
-
-
-<div align = 'center'>
-  <img src='images/horse2zebra_result.PNG' height = '460px'>
-</div>
-<p align = 'center'>
-Qualitative comparisons between the implementation and the results from the paper.
-</p>
 
 
 ## Requirements
