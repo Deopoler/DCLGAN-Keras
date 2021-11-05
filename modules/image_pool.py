@@ -20,6 +20,7 @@ class ImagePool():
             self.images = tf.random.normal(
                 shape=(pool_size, 1, *image_shape))  # If I create images as blank list, IndexError occurred
 
+    @tf.function
     def query(self, image):
         """Return an image from the pool.
         Parameters:
