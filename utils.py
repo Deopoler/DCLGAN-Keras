@@ -2,6 +2,10 @@ import os
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import numpy as np
+try:
+    import wandb
+except ImportError:
+    pass
 
 
 def create_dir(dir):
@@ -91,11 +95,12 @@ class GANMonitor(tf.keras.callbacks.Callback):
     """ A callback to generate and save images after each epoch
     """
 
-    def __init__(self, generator_ab, generator_ba, test_dataset, out_dir, num_img=2):
+    def __init__(self, generator_ab, generator_ba, test_dataset, out_dir, logger, num_img=2):
         self.num_img = num_img
         self.generator_ab = generator_ab
         self.generator_ba = generator_ba
         self.test_dataset = test_dataset
+        self.logger = logger
         self.out_dir = create_dir(out_dir)
 
     def on_epoch_end(self, epoch, logs=None):
@@ -116,4 +121,7 @@ class GANMonitor(tf.keras.callbacks.Callback):
             [ax[i, j].axis("off") for j in range(4)]
 
         plt.savefig(f'{self.out_dir}/epoch={epoch + 1}.png')
+
+        if self.logger == 'wandb':
+            wandb.log({'generated_images': plt})
         plt.close()

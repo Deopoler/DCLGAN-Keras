@@ -8,6 +8,11 @@ import datetime
 import tensorflow as tf
 from modules.dcl_model import DCL_model
 from utils import GANMonitor, create_dataset
+try:
+    import wandb
+    from wandb.keras import WandbCallback
+except ImportError:
+    pass
 
 
 def ArgParse():
@@ -48,6 +53,9 @@ def ArgParse():
         '--save_n_epoch', help='Every n epochs to save checkpoints', type=int, default=5)
     parser.add_argument('--impl', help="(Faster)Custom op use:'cuda'; (Slower)Tensorflow op use:'ref'",
                         type=str, default='ref', choices=['ref', 'cuda'])
+
+    parser.add_argument('--logger', help="Logger be one of: 'tensorboard', 'wandb'",
+                        type=str, default='tensorboard', choices=['tensorboard', 'wandb'])
 
     args = parser.parse_args()
 
@@ -126,7 +134,7 @@ def main(args):
 
     # Create validating callback to generate output image every epoch
     plotter_callback = GANMonitor(
-        dclgan.netG_AB, dclgan.netG_BA, test_dataset, result_dir)
+        dclgan.netG_AB, dclgan.netG_BA, test_dataset, result_dir, args.logger)
 
     # Create checkpoint callback to save model's checkpoints every n epoch (default 5)
     # "period" to save every n epochs, "save_freq" to save every n batches
@@ -136,15 +144,20 @@ def main(args):
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath=checkpoint_dir+'/{epoch:03d}', save_freq=save_freq, verbose=0, save_weights_only=True)
 
-    # Create tensorboard callback to log losses every epoch
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir)
+    if args.logger == 'tensorboard':
+        # Create tensorboard callback to log losses every epoch
+        logger_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir)
+    else:
+        wandb.init(config=args)
+        # Create wandb callback to log losses every epoch
+        logger_callback = WandbCallback()
 
     # Train cut model
     dclgan.fit(train_dataset,
                epochs=args.epochs,
                initial_epoch=initial_epoch,
                callbacks=[plotter_callback,
-                          checkpoint_callback, tensorboard_callback],
+                          checkpoint_callback, logger_callback],
                verbose=1)
 
 
