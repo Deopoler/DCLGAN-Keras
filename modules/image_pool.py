@@ -33,9 +33,9 @@ class ImagePool():
         if self.pool_size == 0:  # if the buffer size is 0, do nothing
             return image
         self.images = tf.concat(
-            [self.images, tf.expand_dims(image, 0)], 0)
+            [self.images, tf.expand_dims(image, 0)], 0)  # add image
         self.images = tf.slice(
-            self.images, [0, 0, 0, 0, 0], [self.pool_size, 1, *self.image_shape])
+            self.images, [1, 0, 0, 0, 0], [self.pool_size, 1, *self.image_shape])
         self.num_imgs = self.num_imgs + 1
         p = random.uniform(0, 1)
         if p > 0.5:  # by 50% chance, the buffer will return a previously stored image, and insert the current image into the buffer
