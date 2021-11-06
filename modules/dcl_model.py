@@ -286,13 +286,13 @@ class DCL_model(Model):
             D_B_loss = (D_B_fake_loss + D_B_real_loss) * 0.5
 
             """Calculate GAN loss and NCE loss for the generator"""
-            fake_B_score = self.netD_B(fake_B, training=True)
+            fake_B_score_ = self.netD_B(fake_B, training=True)
             G_AB_GAN_loss = tf.reduce_mean(
-                self.gan_loss_func(fake_B_score, True))
+                self.gan_loss_func(fake_B_score_, True))
 
-            fake_A_score = self.netD_A(fake_A, training=True)
+            fake_A_score_ = self.netD_A(fake_A, training=True)
             G_BA_GAN_loss = tf.reduce_mean(
-                self.gan_loss_func(fake_A_score, True))
+                self.gan_loss_func(fake_A_score_, True))
 
             G_GAN_loss = (G_AB_GAN_loss + G_BA_GAN_loss) * 0.5
 
