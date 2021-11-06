@@ -246,20 +246,19 @@ class DCL_model(Model):
     def train_step(self, batch_data):
         # A is source and B is target
         real_A, real_B = batch_data
-        real = tf.concat([real_A, real_B],
-                         axis=0) if self.use_identity else real_A
+        real = tf.concat([real_A, real_B], axis=0)
 
         with tf.GradientTape(persistent=True) as tape:
 
-            fake = self.netG_AB(real, training=True)
-            fake_B = fake[:real_A.shape[0]]  # Input: real_A
+            fake_AB = self.netG_AB(real, training=True)
+            fake_B = fake_AB[:real_A.shape[0]]  # Input: real_A
             if self.use_identity:
-                idt_B = fake[real_A.shape[0]:]  # Input: real_B
+                idt_B = fake_AB[real_A.shape[0]:]  # Input: real_B
 
-            fake = self.netG_BA(real, training=True)
-            fake_A = fake[real_A.shape[0]:]  # Input: real_B
+            fake_BA = self.netG_BA(real, training=True)
+            fake_A = fake_BA[real_A.shape[0]:]  # Input: real_B
             if self.use_identity:
-                idt_A = fake[:real_A.shape[0]]  # Input: real_A
+                idt_A = fake_BA[:real_A.shape[0]]  # Input: real_A
 
             """Calculate GAN loss for discriminator D_A"""
 
