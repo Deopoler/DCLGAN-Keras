@@ -13,7 +13,7 @@ def create_dir(dir):
     """
     if not os.path.exists(dir):
         os.makedirs(dir)
-        print(f'Directory {dir} createrd')
+        print(f'Directory {dir} created')
     else:
         print(f'Directory {dir} already exists')
 
