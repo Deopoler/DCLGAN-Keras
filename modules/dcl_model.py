@@ -210,9 +210,9 @@ class DCL_model(Model):
         self.netF_A = PatchSampleMLP(netF_units, netF_num_patches)
         self.netF_B = PatchSampleMLP(netF_units, netF_num_patches)
         # create image buffer to store previously generated images
-        self.fake_A_pool = ImagePool(pool_size, target_shape)
+        self.fake_A_pool = ImagePool(pool_size)
         # create image buffer to store previously generated images
-        self.fake_B_pool = ImagePool(pool_size, target_shape)
+        self.fake_B_pool = ImagePool(pool_size)
         self.pool_size = pool_size
 
         if dclgan_mode == 'dclgan':
