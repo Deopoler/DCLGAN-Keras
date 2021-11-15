@@ -7,6 +7,7 @@ import argparse
 import datetime
 import tensorflow as tf
 from modules.dcl_model import DCL_model
+from modules.simdcl_model import SimDCL_model
 from utils import GANMonitor, create_dataset
 try:
     import wandb
@@ -90,8 +91,12 @@ def main(args):
     target_shape = target_image.shape[1:]
 
     # Create model
-    dclgan = DCL_model(source_shape, target_shape,
-                       dclgan_mode=args.mode, impl=args.impl)
+    if args.mode == 'dclgan':
+        dclgan = DCL_model(source_shape, target_shape,
+                           dclgan_mode=args.mode, impl=args.impl)
+    else:
+        dclgan = SimDCL_model(source_shape, target_shape,
+                              simdcl_mode=args.mode, impl=args.impl)
     # without this, error occurs, when saving model
     dclgan.compute_output_shape((None, *target_shape))
 

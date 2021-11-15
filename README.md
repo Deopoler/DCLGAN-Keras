@@ -36,7 +36,7 @@ python inference.py --mode dclgan                         \
 
 ## Requirements
 You will need the following to run the above:
-- TensorFlow >= 2.0
+- TensorFlow >= 2.0, tensorflow-addons 0.15.0
 - Python 3, Numpy 1.19.5, Matplotlib 3.4.3
 
 ## Acknowledgements

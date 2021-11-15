@@ -9,35 +9,36 @@ CUT_model
 import tensorflow as tf
 
 from tensorflow.keras.models import Model
-from .losses import GANLoss, PatchNCELoss
+from .losses import GANLoss, PatchNCEAndSimLoss
 from .image_pool import ImagePool
-from .networks import Generator, Discriminator, Encoder, PatchSampleMLP
+from .networks import Generator, Discriminator, Encoder, PatchSampleMLP, MappingMLP
 
 
-class DCL_model(Model):
+class SimDCL_model(Model):
     """ Create a DCLGAN/SimDCL model"""
 
     def __init__(self,
                  source_shape,
                  target_shape,
-                 dclgan_mode='dclgan',
+                 simdcl_mode='simdcl',
                  gan_mode='lsgan',
                  use_antialias=True,
                  norm_layer='instance',
                  resnet_blocks=9,
                  netF_units=256,
                  netF_num_patches=256,
+                 netF_mapping_dim=64,
                  nce_temp=0.07,
                  nce_layers=[3, 5, 7, 11],
                  pool_size=50,
                  impl='ref',
                  **kwargs):
-        assert dclgan_mode in ['dclgan']
+        assert simdcl_mode in ['simdcl']
         assert gan_mode in ['lsgan', 'nonsaturating']
         assert norm_layer in [None, 'batch', 'instance']
         assert netF_units > 0
         assert netF_num_patches > 0
-        super(DCL_model, self).__init__(self, **kwargs)
+        super(SimDCL_model, self).__init__(self, **kwargs)
 
         self.gan_mode = gan_mode
         self.nce_temp = nce_temp
@@ -54,17 +55,26 @@ class DCL_model(Model):
         self.netE_B = Encoder(self.netG_BA, self.nce_layers)
         self.netF_A = PatchSampleMLP(netF_units, netF_num_patches)
         self.netF_B = PatchSampleMLP(netF_units, netF_num_patches)
+        self.netF_1 = MappingMLP(
+            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim)
+        self.netF_2 = MappingMLP(
+            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim)
+        self.netF_3 = MappingMLP(
+            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim)
+        self.netF_4 = MappingMLP(
+            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim)
         # create image buffer to store previously generated images
         self.fake_A_pool = ImagePool(pool_size)
         # create image buffer to store previously generated images
         self.fake_B_pool = ImagePool(pool_size)
         self.pool_size = pool_size
 
-        if dclgan_mode == 'dclgan':
+        if simdcl_mode == 'simdcl':
             self.nce_lambda = 2.0
             self.use_identity = True
+            self.sim_lambda = 10.0
         else:
-            raise ValueError(dclgan_mode)
+            raise ValueError(simdcl_mode)
 
     def compile(self,
                 G_AB_optimizer,
@@ -73,7 +83,7 @@ class DCL_model(Model):
                 F_B_optimizer,
                 D_A_optimizer,
                 D_B_optimizer,):
-        super(DCL_model, self).compile()
+        super(SimDCL_model, self).compile()
         self.G_AB_optimizer = G_AB_optimizer
         self.G_BA_optimizer = G_BA_optimizer
         self.F_A_optimizer = F_A_optimizer
@@ -81,7 +91,8 @@ class DCL_model(Model):
         self.D_A_optimizer = D_A_optimizer
         self.D_B_optimizer = D_B_optimizer
         self.gan_loss_func = GANLoss(self.gan_mode)
-        self.nce_loss_func = PatchNCELoss(self.nce_temp, self.nce_lambda)
+        self.nce_sim_loss_func = PatchNCEAndSimLoss(
+            self.nce_temp, self.nce_lambda, self.sim_lambda)
         self.idt_loss_func = tf.keras.losses.MeanAbsoluteError()
 
     def call(self, inputs, training=None, mask=None):  # for computing output shape
@@ -140,18 +151,15 @@ class DCL_model(Model):
 
             G_GAN_loss = (G_AB_GAN_loss + G_BA_GAN_loss) * 0.5
 
-            NCE_loss1 = self.nce_loss_func(
-                real_A, fake_B, self.netE_A, self.netE_B, self.netF_A, self.netF_B)
-            NCE_loss2 = self.nce_loss_func(
-                real_B, fake_A, self.netE_B, self.netE_A, self.netF_B, self.netF_A)
-            NCE_loss = (NCE_loss1 + NCE_loss2) * 0.5
+            Sim_loss, NCE_loss = self.nce_sim_loss_func(
+                real_A, fake_B, real_B, fake_A, self.netE_A, self.netE_B, self.netF_A, self.netF_B, self.netF_1, self.netF_2, self.netF_3, self.netF_4)
 
             if self.use_identity:
                 idt_A_loss = self.idt_loss_func(idt_B, real_B)
                 idt_B_loss = self.idt_loss_func(idt_A, real_A)
                 NCE_loss += (idt_A_loss + idt_B_loss) * 0.5
 
-            G_loss = G_GAN_loss + NCE_loss
+            G_loss = G_GAN_loss + NCE_loss + Sim_loss
 
         """ Apply Gradients """
         D_A_loss_grads = tape.gradient(
@@ -189,4 +197,5 @@ class DCL_model(Model):
                 'D_B_loss': D_B_loss,
                 'G_AB_GAN_loss': G_AB_GAN_loss,
                 'G_BA_GAN_loss': G_BA_GAN_loss,
-                'NCE_loss': NCE_loss}
+                'NCE_loss': NCE_loss,
+                'Sim_loss': Sim_loss}
