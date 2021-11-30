@@ -12,6 +12,7 @@ from tensorflow.keras.models import Model
 from .losses import GANLoss, PatchNCEAndSimLoss
 from .image_pool import ImagePool
 from .networks import Generator, Discriminator, Encoder, PatchSampleMLP, MappingMLP
+from tensorflow.keras import mixed_precision
 
 
 class SimDCL_model(Model):
@@ -32,6 +33,7 @@ class SimDCL_model(Model):
                  nce_layers=[3, 5, 7, 11],
                  pool_size=50,
                  impl='ref',
+                 fp16=False,
                  **kwargs):
         assert simdcl_mode in ['simdcl']
         assert gan_mode in ['lsgan', 'nonsaturating']
@@ -43,26 +45,27 @@ class SimDCL_model(Model):
         self.gan_mode = gan_mode
         self.nce_temp = nce_temp
         self.nce_layers = nce_layers
+        self.fp16 = fp16
         self.netG_AB = Generator(source_shape, target_shape,
-                                 norm_layer, use_antialias, resnet_blocks, impl)
+                                 norm_layer, use_antialias, resnet_blocks, impl, fp16)
         self.netG_BA = Generator(source_shape, target_shape,
-                                 norm_layer, use_antialias, resnet_blocks, impl)
+                                 norm_layer, use_antialias, resnet_blocks, impl, fp16)
         self.netD_A = Discriminator(
-            target_shape, norm_layer, use_antialias, impl)
+            target_shape, norm_layer, use_antialias, impl, fp16)
         self.netD_B = Discriminator(
-            target_shape, norm_layer, use_antialias, impl)
-        self.netE_A = Encoder(self.netG_AB, self.nce_layers)
-        self.netE_B = Encoder(self.netG_BA, self.nce_layers)
-        self.netF_A = PatchSampleMLP(netF_units, netF_num_patches)
-        self.netF_B = PatchSampleMLP(netF_units, netF_num_patches)
+            target_shape, norm_layer, use_antialias, impl, fp16)
+        self.netE_A = Encoder(self.netG_AB, self.nce_layers, fp16)
+        self.netE_B = Encoder(self.netG_BA, self.nce_layers, fp16)
+        self.netF_A = PatchSampleMLP(netF_units, netF_num_patches, fp16)
+        self.netF_B = PatchSampleMLP(netF_units, netF_num_patches, fp16)
         self.netF_1 = MappingMLP(
-            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim)
+            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim, fp16)
         self.netF_2 = MappingMLP(
-            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim)
+            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim, fp16)
         self.netF_3 = MappingMLP(
-            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim)
+            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim, fp16)
         self.netF_4 = MappingMLP(
-            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim)
+            len(nce_layers), netF_num_patches, netF_units, netF_mapping_dim, fp16)
         # create image buffer to store previously generated images
         self.fake_A_pool = ImagePool(pool_size)
         # create image buffer to store previously generated images
@@ -82,14 +85,29 @@ class SimDCL_model(Model):
                 F_A_optimizer,
                 F_B_optimizer,
                 D_A_optimizer,
-                D_B_optimizer,):
+                D_B_optimizer,
+                F_1_optimizer,
+                F_2_optimizer,
+                F_3_optimizer,
+                F_4_optimizer,
+                ):
         super(SimDCL_model, self).compile()
-        self.G_AB_optimizer = G_AB_optimizer
-        self.G_BA_optimizer = G_BA_optimizer
-        self.F_A_optimizer = F_A_optimizer
-        self.F_B_optimizer = F_B_optimizer
-        self.D_A_optimizer = D_A_optimizer
-        self.D_B_optimizer = D_B_optimizer
+
+        def get_wrapped_optimizer(optimizer):
+            if self.fp16:
+                return mixed_precision.LossScaleOptimizer(optimizer)
+            else:
+                return optimizer
+        self.G_AB_optimizer = get_wrapped_optimizer(G_AB_optimizer)
+        self.G_BA_optimizer = get_wrapped_optimizer(G_BA_optimizer)
+        self.F_A_optimizer = get_wrapped_optimizer(F_A_optimizer)
+        self.F_B_optimizer = get_wrapped_optimizer(F_B_optimizer)
+        self.D_A_optimizer = get_wrapped_optimizer(D_A_optimizer)
+        self.D_B_optimizer = get_wrapped_optimizer(D_B_optimizer)
+        self.F_1_optimizer = get_wrapped_optimizer(F_1_optimizer)
+        self.F_2_optimizer = get_wrapped_optimizer(F_2_optimizer)
+        self.F_3_optimizer = get_wrapped_optimizer(F_3_optimizer)
+        self.F_4_optimizer = get_wrapped_optimizer(F_4_optimizer)
         self.gan_loss_func = GANLoss(self.gan_mode)
         self.nce_sim_loss_func = PatchNCEAndSimLoss(
             self.nce_temp, self.nce_lambda, self.sim_lambda)
@@ -98,7 +116,7 @@ class SimDCL_model(Model):
     def call(self, inputs, training=None, mask=None):  # for computing output shape
         return self.netG_AB(inputs)
 
-    @tf.function
+    @tf.function(jit_compile=True)
     def train_step(self, batch_data):
         # A is source and B is target
         real_A, real_B = batch_data
@@ -161,36 +179,128 @@ class SimDCL_model(Model):
 
             G_loss = G_GAN_loss + NCE_loss + Sim_loss
 
+            if self.fp16:
+                scaled_D_A_loss = self.D_A_optimizer.get_scaled_loss(D_A_loss)
+                scaled_D_B_loss = self.D_B_optimizer.get_scaled_loss(D_B_loss)
+                scaled_G_AB_loss = self.G_AB_optimizer.get_scaled_loss(G_loss)
+                scaled_G_BA_loss = self.G_BA_optimizer.get_scaled_loss(G_loss)
+                scaled_F_A_loss = self.F_A_optimizer.get_scaled_loss(G_loss)
+                scaled_F_B_loss = self.F_B_optimizer.get_scaled_loss(G_loss)
+                scaled_F_1_loss = self.F_1_optimizer.get_scaled_loss(Sim_loss)
+                scaled_F_2_loss = self.F_2_optimizer.get_scaled_loss(Sim_loss)
+                scaled_F_3_loss = self.F_3_optimizer.get_scaled_loss(Sim_loss)
+                scaled_F_4_loss = self.F_4_optimizer.get_scaled_loss(Sim_loss)
+
         """ Apply Gradients """
-        D_A_loss_grads = tape.gradient(
-            D_A_loss, self.netD_A.trainable_variables)
+        if self.fp16:
+            scaled_D_A_loss_grads = tape.gradient(
+                scaled_D_A_loss, self.netD_A.trainable_variables)
+            D_A_loss_grads = self.D_A_optimizer.get_unscaled_gradients(
+                scaled_D_A_loss_grads)
+        else:
+            D_A_loss_grads = tape.gradient(
+                D_A_loss, self.netD_A.trainable_variables)
         self.D_A_optimizer.apply_gradients(
             zip(D_A_loss_grads, self.netD_A.trainable_variables))
 
-        D_B_loss_grads = tape.gradient(
-            D_B_loss, self.netD_B.trainable_variables)
+        if self.fp16:
+            scaled_D_B_loss_grads = tape.gradient(
+                scaled_D_B_loss, self.netD_B.trainable_variables)
+            D_B_loss_grads = self.D_B_optimizer.get_unscaled_gradients(
+                scaled_D_B_loss_grads)
+        else:
+            D_B_loss_grads = tape.gradient(
+                D_B_loss, self.netD_B.trainable_variables)
         self.D_B_optimizer.apply_gradients(
             zip(D_B_loss_grads, self.netD_B.trainable_variables))
 
-        G_AB_loss_grads = tape.gradient(
-            G_loss, self.netG_AB.trainable_variables)
+        if self.fp16:
+            scaled_G_AB_loss_grads = tape.gradient(
+                scaled_G_AB_loss, self.netG_AB.trainable_variables)
+            G_AB_loss_grads = self.G_AB_optimizer.get_unscaled_gradients(
+                scaled_G_AB_loss_grads)
+        else:
+            G_AB_loss_grads = tape.gradient(
+                G_loss, self.netG_AB.trainable_variables)
         self.G_AB_optimizer.apply_gradients(
             zip(G_AB_loss_grads, self.netG_AB.trainable_variables))
 
-        G_BA_loss_grads = tape.gradient(
-            G_loss, self.netG_BA.trainable_variables)
+        if self.fp16:
+            scaled_G_BA_loss_grads = tape.gradient(
+                scaled_G_BA_loss, self.netG_BA.trainable_variables)
+            G_BA_loss_grads = self.G_BA_optimizer.get_unscaled_gradients(
+                scaled_G_BA_loss_grads)
+        else:
+            G_BA_loss_grads = tape.gradient(
+                G_loss, self.netG_BA.trainable_variables)
         self.G_BA_optimizer.apply_gradients(
             zip(G_BA_loss_grads, self.netG_BA.trainable_variables))
 
-        F_A_loss_grads = tape.gradient(
-            NCE_loss, self.netF_A.trainable_variables)
+        if self.fp16:
+            scaled_F_A_loss_grads = tape.gradient(
+                scaled_F_A_loss, self.netF_A.trainable_variables)
+            F_A_loss_grads = self.F_A_optimizer.get_unscaled_gradients(
+                scaled_F_A_loss_grads)
+        else:
+            F_A_loss_grads = tape.gradient(
+                G_loss, self.netF_A.trainable_variables)
         self.F_A_optimizer.apply_gradients(
             zip(F_A_loss_grads, self.netF_A.trainable_variables))
 
-        F_B_loss_grads = tape.gradient(
-            NCE_loss, self.netF_B.trainable_variables)
+        if self.fp16:
+            scaled_F_B_loss_grads = tape.gradient(
+                scaled_F_B_loss, self.netF_B.trainable_variables)
+            F_B_loss_grads = self.F_B_optimizer.get_unscaled_gradients(
+                scaled_F_B_loss_grads)
+        else:
+            F_B_loss_grads = tape.gradient(
+                G_loss, self.netF_B.trainable_variables)
         self.F_B_optimizer.apply_gradients(
             zip(F_B_loss_grads, self.netF_B.trainable_variables))
+
+        if self.fp16:
+            scaled_F_1_loss_grads = tape.gradient(
+                scaled_F_1_loss, self.netF_1.trainable_variables)
+            F_1_loss_grads = self.F_1_optimizer.get_unscaled_gradients(
+                scaled_F_1_loss_grads)
+        else:
+            F_1_loss_grads = tape.gradient(
+                G_loss, self.netF_1.trainable_variables)
+        self.F_1_optimizer.apply_gradients(
+            zip(F_1_loss_grads, self.netF_1.trainable_variables))
+
+        if self.fp16:
+            scaled_F_2_loss_grads = tape.gradient(
+                scaled_F_2_loss, self.netF_2.trainable_variables)
+            F_2_loss_grads = self.F_2_optimizer.get_unscaled_gradients(
+                scaled_F_2_loss_grads)
+        else:
+            F_2_loss_grads = tape.gradient(
+                G_loss, self.netF_2.trainable_variables)
+        self.F_2_optimizer.apply_gradients(
+            zip(F_2_loss_grads, self.netF_2.trainable_variables))
+
+        if self.fp16:
+            scaled_F_3_loss_grads = tape.gradient(
+                scaled_F_3_loss, self.netF_3.trainable_variables)
+            F_3_loss_grads = self.F_3_optimizer.get_unscaled_gradients(
+                scaled_F_3_loss_grads)
+        else:
+            F_3_loss_grads = tape.gradient(
+                G_loss, self.netF_3.trainable_variables)
+        self.F_3_optimizer.apply_gradients(
+            zip(F_3_loss_grads, self.netF_3.trainable_variables))
+
+        if self.fp16:
+            scaled_F_3_loss_grads = tape.gradient(
+                scaled_F_3_loss, self.netF_3.trainable_variables)
+            F_3_loss_grads = self.F_3_optimizer.get_unscaled_gradients(
+                scaled_F_3_loss_grads)
+        else:
+            F_3_loss_grads = tape.gradient(
+                G_loss, self.netF_3.trainable_variables)
+        self.F_3_optimizer.apply_gradients(
+            zip(F_3_loss_grads, self.netF_3.trainable_variables))
 
         del tape
         return {'D_A_loss': D_A_loss,

@@ -1,13 +1,13 @@
 import tensorflow as tf
 
-from tensorflow.keras.layers import Input, Dense, Lambda, Conv2D, Flatten, Reshape
+from tensorflow.keras.layers import Input, Dense, Lambda, Conv2D, Flatten, Reshape, Activation
 from tensorflow_addons.layers import AdaptiveAveragePooling2D
 from tensorflow.keras.models import Model
 
 from .layers import ConvBlock, ConvTransposeBlock, ResBlock, AntialiasSampling, Padding2D
 
 
-def Generator(input_shape, output_shape, norm_layer, use_antialias, resnet_blocks, impl):
+def Generator(input_shape, output_shape, norm_layer, use_antialias, resnet_blocks, impl, fp16):
     """ Create a Resnet-based generator.
     Adapt from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style).
     For BatchNorm, we use learnable affine parameters and track running statistics (mean/stddev).
@@ -52,11 +52,14 @@ def Generator(input_shape, output_shape, norm_layer, use_antialias, resnet_block
     x = Padding2D(3, pad_type='reflect')(x)
     outputs = ConvBlock(output_shape[-1], 7,
                         padding='valid', activation='tanh')(x)
+    if fp16:
+        outputs = Activation('linear', dtype='float32')(
+            outputs)  # outputs should be float32
 
     return Model(inputs=inputs, outputs=outputs, name='generator')
 
 
-def Discriminator(input_shape, norm_layer, use_antialias, impl):
+def Discriminator(input_shape, norm_layer, use_antialias, impl, fp16):
     """ Create a PatchGAN discriminator.
     PatchGAN classifier described in the original pix2pix paper (https://arxiv.org/abs/1611.07004).
     Such a patch-level discriminator architecture has fewer parameters
@@ -90,16 +93,23 @@ def Discriminator(input_shape, norm_layer, use_antialias, impl):
                   norm_layer=norm_layer, activation=tf.nn.leaky_relu)(x)
     x = Padding2D(1, pad_type='constant')(x)
     outputs = ConvBlock(1, 4, padding='valid')(x)
+    if fp16:
+        outputs = Activation('linear', dtype='float32')(
+            outputs)  # outputs should be float32
 
     return Model(inputs=inputs, outputs=outputs, name='discriminator')
 
 
-def Encoder(generator, nce_layers):
+def Encoder(generator, nce_layers, fp16):
     """ Create an Encoder that shares weights with the generator.
     """
     assert max(nce_layers) <= len(generator.layers) and min(nce_layers) >= 0
 
-    outputs = [generator.get_layer(index=idx).output for idx in nce_layers]
+    if fp16:
+        outputs = [Activation('linear', dtype='float32')(generator.get_layer(
+            index=idx).output) for idx in nce_layers]  # outputs should be float32
+    else:
+        outputs = [generator.get_layer(index=idx).output for idx in nce_layers]
 
     return Model(inputs=generator.input, outputs=outputs, name='encoder')
 
@@ -111,10 +121,11 @@ class PatchSampleMLP(Model):
     Two-layer MLP projects both the input and output patches to a shared embedding space.
     """
 
-    def __init__(self, units, num_patches, **kwargs):
+    def __init__(self, units, num_patches, fp16, **kwargs):
         super(PatchSampleMLP, self).__init__(**kwargs)
         self.units = units
         self.num_patches = num_patches
+        self.fp16 = fp16
         self.l2_norm = Lambda(
             lambda x: x * tf.math.rsqrt(tf.reduce_sum(tf.square(x), axis=-1, keepdims=True) + 10-10))
 
@@ -149,13 +160,15 @@ class PatchSampleMLP(Model):
             mlp = getattr(self, f'mlp_{feat_id}')
             x_sample = mlp(x_sample)
             x_sample = self.l2_norm(x_sample)
+            if self.fp16:
+                x_sample = tf.cast(x_sample, dtype=tf.float32)
             samples.append(x_sample)
             ids.append(patch_id)
 
         return samples, ids
 
 
-def MappingMLP(in_layer, num_patches, nc, dim):
+def MappingMLP(in_layer, num_patches, nc, dim, fp16):
     """ Create a MappingMLP.
     Adapt from official DCLGAN implementation (https://github.com/JunlinHan/DCLGAN).
     """
@@ -166,5 +179,8 @@ def MappingMLP(in_layer, num_patches, nc, dim):
     x = Flatten()(x)
     x = Dense(dim, activation='relu')(x)
     outputs = Dense(dim)(x)
+    if fp16:
+        outputs = Activation('linear', dtype='float32')(
+            outputs)  # outputs should be float32
 
     return Model(inputs=inputs, outputs=outputs, name='mapping_mlp')

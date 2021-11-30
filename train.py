@@ -6,6 +6,7 @@ import os
 import argparse
 import datetime
 import tensorflow as tf
+from tensorflow.keras import mixed_precision
 from modules.dcl_model import DCL_model
 from modules.simdcl_model import SimDCL_model
 from utils import GANMonitor, create_dataset
@@ -54,7 +55,8 @@ def ArgParse():
         '--save_n_epoch', help='Every n epochs to save checkpoints', type=int, default=5)
     parser.add_argument('--impl', help="(Faster)Custom op use:'cuda'; (Slower)Tensorflow op use:'ref'",
                         type=str, default='ref', choices=['ref', 'cuda'])
-
+    parser.add_argument('--fp16',
+                        action='store_true', help='train with mixed precision')
     parser.add_argument('--logger', help="Logger be one of: 'tensorboard', 'wandb'",
                         type=str, default='tensorboard', choices=['tensorboard', 'wandb'])
 
@@ -78,6 +80,8 @@ def ArgParse():
 
 
 def main(args):
+    if args.fp16:
+        mixed_precision.set_global_policy('mixed_float16')
     # Create datasets
     train_dataset, test_dataset = create_dataset(args.train_a_dir,
                                                  args.train_b_dir,
@@ -93,10 +97,10 @@ def main(args):
     # Create model
     if args.mode == 'dclgan':
         dclgan = DCL_model(source_shape, target_shape,
-                           dclgan_mode=args.mode, impl=args.impl)
+                           dclgan_mode=args.mode, impl=args.impl, fp16=args.fp16)
     else:
         dclgan = SimDCL_model(source_shape, target_shape,
-                              simdcl_mode=args.mode, impl=args.impl)
+                              simdcl_mode=args.mode, impl=args.impl, fp16=args.fp16)
     # without this, error occurs, when saving model
     dclgan.compute_output_shape((None, *target_shape))
 
@@ -107,20 +111,44 @@ def main(args):
                                                                  staircase=True)
 
     # Compile model
-    dclgan.compile(
-        G_AB_optimizer=tf.keras.optimizers.Adam(
-            learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
-        G_BA_optimizer=tf.keras.optimizers.Adam(
-            learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
-        F_A_optimizer=tf.keras.optimizers.Adam(
-            learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
-        F_B_optimizer=tf.keras.optimizers.Adam(
-            learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
-        D_A_optimizer=tf.keras.optimizers.Adam(
-            learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
-        D_B_optimizer=tf.keras.optimizers.Adam(
-            learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
-    )
+    if args.mode == 'dclgan':
+        dclgan.compile(
+            G_AB_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            G_BA_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            F_A_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            F_B_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            D_A_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            D_B_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+        )
+    else:
+        dclgan.compile(
+            G_AB_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            G_BA_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            F_A_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            F_B_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            D_A_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            D_B_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            F_1_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            F_2_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            F_3_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+            F_4_optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, beta_1=args.beta_1, beta_2=args.beta_2),
+        )
 
     # Restored from previous checkpoints, or initialize checkpoints from scratch
     if args.ckpt is not None:

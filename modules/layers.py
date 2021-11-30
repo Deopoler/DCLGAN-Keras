@@ -12,6 +12,7 @@ import numpy as np
 
 from tensorflow.keras.layers import Layer, Conv2D, Conv2DTranspose, BatchNormalization, Activation
 from .ops.upfirdn_2d import upsample_2d, downsample_2d
+from tensorflow_addons.layers import InstanceNormalization
 
 
 class Padding2D(Layer):
@@ -41,39 +42,9 @@ class Padding2D(Layer):
         padding_width, padding_height = self.padding
         return (B, H + padding_height * 2, W + padding_width, C)
 
-
-class InstanceNorm(tf.keras.layers.Layer):
-    """ Instance Normalization layer (https://arxiv.org/abs/1607.08022).
-    """
-
-    def __init__(self, epsilon=1e-5, affine=False, **kwargs):
-        super(InstanceNorm, self).__init__(**kwargs)
-        self.epsilon = epsilon
-        self.affine = affine
-
-    def build(self, input_shape):
-        if self.affine:
-            self.gamma = self.add_weight(name='gamma',
-                                         shape=(input_shape[-1],),
-                                         initializer=tf.random_normal_initializer(
-                                             0, 0.02),
-                                         trainable=True)
-            self.beta = self.add_weight(name='beta',
-                                        shape=(input_shape[-1],),
-                                        initializer=tf.zeros_initializer(),
-                                        trainable=True)
-
-    def call(self, inputs, training=None):
-        mean, var = tf.nn.moments(inputs, axes=[1, 2], keepdims=True)
-        x = tf.divide(tf.subtract(inputs, mean),
-                      tf.math.sqrt(tf.add(var, self.epsilon)))
-
-        if self.affine:
-            return self.gamma * x + self.beta
-        return x
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
+    def cast_inputs(self, inputs):
+       # Casts to float16, the policy's lowest-precision dtype
+        return self._mixed_precision_policy.cast_to_lowest(inputs)
 
 
 class AntialiasSampling(tf.keras.layers.Layer):
@@ -119,6 +90,10 @@ class AntialiasSampling(tf.keras.layers.Layer):
         factor = 2
         return [N, H * factor, W * factor, C]
 
+    def cast_inputs(self, inputs):
+       # Casts to float16, the policy's lowest-precision dtype
+        return self._mixed_precision_policy.cast_to_lowest(inputs)
+
 
 class ConvBlock(Layer):
     """ ConBlock layer consists of Conv2D + Normalization + Activation.
@@ -145,7 +120,7 @@ class ConvBlock(Layer):
         if norm_layer == 'batch':
             self.normalization = BatchNormalization()
         elif norm_layer == 'instance':
-            self.normalization = InstanceNorm(affine=False)
+            self.normalization = InstanceNormalization()
         else:
             self.normalization = tf.identity
 
@@ -155,6 +130,10 @@ class ConvBlock(Layer):
         x = self.activation(x)
 
         return x
+
+    def cast_inputs(self, inputs):
+       # Casts to float16, the policy's lowest-precision dtype
+        return self._mixed_precision_policy.cast_to_lowest(inputs)
 
 
 class ConvTransposeBlock(Layer):
@@ -182,7 +161,7 @@ class ConvTransposeBlock(Layer):
         if norm_layer == 'batch':
             self.normalization = BatchNormalization()
         elif norm_layer == 'instance':
-            self.normalization = InstanceNorm(affine=False)
+            self.normalization = InstanceNormalization()
         else:
             self.normalization = tf.identity
 
@@ -192,6 +171,10 @@ class ConvTransposeBlock(Layer):
         x = self.activation(x)
 
         return x
+
+    def cast_inputs(self, inputs):
+       # Casts to float16, the policy's lowest-precision dtype
+        return self._mixed_precision_policy.cast_to_lowest(inputs)
 
 
 class ResBlock(Layer):
@@ -230,3 +213,7 @@ class ResBlock(Layer):
         x = self.conv_block2(x)
 
         return inputs + x
+
+    def cast_inputs(self, inputs):
+        # Casts to float16, the policy's lowest-precision dtype
+        return self._mixed_precision_policy.cast_to_lowest(inputs)
