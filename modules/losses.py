@@ -1,6 +1,7 @@
 """ Implement the following loss functions that used in CUT/FastCUT model.
 GANLoss
 PatchNCELoss
+PatchNCEAndSimLoss
 """
 
 import tensorflow as tf

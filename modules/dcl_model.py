@@ -1,11 +1,3 @@
-""" Implement the following components that used in DCLGAN model.
-Generator (Resnet-based)
-Discriminator (PatchGAN)
-Encoder
-PatchSampleMLP
-CUT_model
-"""
-
 import tensorflow as tf
 
 from tensorflow.keras.models import Model
