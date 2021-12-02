@@ -8,7 +8,7 @@ DCLGAN is a simple yet powerful model for unsupervised Image-to-image translatio
 </div>
 
 ## Training
-Use `train.py` to train a DCLGAN/SimDCL(Not currently implemented) model on given dataset.
+Use `train.py` to train a DCLGAN/SimDCL model on given dataset.
 Training takes 502ms(fp32)/403ms(fp16) for a single step on RTX 3070.
 
 Example usage for training on horse2zebra-dataset:
