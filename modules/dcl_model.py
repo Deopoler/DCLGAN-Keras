@@ -8,7 +8,7 @@ from tensorflow.keras import mixed_precision
 
 
 class DCL_model(Model):
-    """ Create a DCLGAN/SimDCL model"""
+    """ Create a DCLGAN model"""
 
     def __init__(self,
                  source_shape,
